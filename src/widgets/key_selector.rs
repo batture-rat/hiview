@@ -1,21 +1,14 @@
 use crate::app::navigation::KeySort;
 use crate::app::state::{FocusedPane, State};
 use notatin::cell_key_node::CellKeyNode;
-use ratatui::layout::Constraint;
-use ratatui::style::Stylize;
-use ratatui::text::Text;
-use ratatui::widgets::StatefulWidget;
-use ratatui::{
-    buffer::Buffer,
-    layout::Rect,
-    style::*,
-    symbols::border,
-    text::Line,
-    widgets::{block::*, *},
-};
 use std::convert::Into;
 
-use ratatui::prelude::Alignment;
+use ratatui::layout::Alignment;
+use ratatui::prelude::{Buffer, Constraint, Margin, Rect};
+use ratatui::style::*;
+use ratatui::symbols::*;
+use ratatui::text::{Line, Text};
+use ratatui::widgets::{block::*, *};
 
 pub struct KeySelector;
 
@@ -134,5 +127,19 @@ impl StatefulWidget for &mut KeySelector {
             buf,
             &mut state.navigation.table_states.key_selector_state,
         );
+
+        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(Some("↑"))
+            .end_symbol(Some("↓"));
+
+        <Scrollbar as StatefulWidget>::render(
+            scrollbar,
+            area.inner(Margin {
+                vertical: 1,
+                horizontal: 0,
+            }),
+            buf,
+            &mut state.navigation.scrollbar_state,
+        )
     }
 }

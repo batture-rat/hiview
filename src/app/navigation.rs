@@ -6,7 +6,7 @@ use lru::LruCache;
 use notatin::cell_key_node::CellKeyNode;
 use notatin::cell_key_value::CellKeyValue;
 use notatin::parser::Parser;
-use ratatui::widgets::TableState;
+use ratatui::widgets::{ScrollbarState, TableState};
 
 /// Contains and manages information about where we are currently
 /// located within the registry hive tree structure.
@@ -19,9 +19,10 @@ pub struct Navigation {
     pub current_values: Vec<CellKeyValue>,
     pub selected_value: Option<CellKeyValue>,
     pub table_states: CurrentKeyState,
-    pub key_state_cache: LruCache<usize, TableState>,
+    pub key_state_cache: LruCache<usize, (TableState, ScrollbarState)>,
     pub value_state_cache: LruCache<usize, TableState>,
     pub key_sort_method: KeySort,
+    pub scrollbar_state: ScrollbarState,
 }
 
 #[derive(Copy, Clone, Default, Debug, EnumIter, PartialEq, Eq, PartialOrd, Ord)]
@@ -50,8 +51,30 @@ impl Navigation {
             key_state_cache: LruCache::new(NonZero::new(200).unwrap()),
             value_state_cache: LruCache::new(NonZero::new(200).unwrap()),
             key_sort_method: KeySort::default(),
+            scrollbar_state: ScrollbarState::default(),
         }
         .with_selected_key(current_key.clone())
+    }
+
+    pub fn change_subkey_scroll_position(&mut self, by_n: isize) {
+        let current = self.table_states.key_selector_state.selected().unwrap_or(0);
+
+        self.table_states.key_selector_state.select(Some(
+            (current as isize)
+                .saturating_add(by_n)
+                .try_into()
+                .unwrap_or(0),
+        ));
+
+        match by_n {
+            -1 => self.scrollbar_state.last(),
+            1 => self.scrollbar_state.next(),
+            _ => {
+                self.scrollbar_state = self
+                    .scrollbar_state
+                    .position(self.table_states.key_selector_state.selected().unwrap_or(0))
+            }
+        }
     }
 
     pub fn with_selected_key(mut self, key: CellKeyNode) -> Self {
@@ -93,7 +116,10 @@ impl Navigation {
         if self.table_states.key_selector_state.selected().unwrap_or(0) != 0 {
             self.key_state_cache.put(
                 self.current_key.file_offset_absolute,
-                self.table_states.key_selector_state.clone(),
+                (
+                    self.table_states.key_selector_state.clone(),
+                    self.scrollbar_state.clone(),
+                ),
             );
         }
         if self
@@ -115,10 +141,13 @@ impl Navigation {
         self.current_values = self.current_key.value_iter().collect::<Vec<CellKeyValue>>();
 
         // Get the saved table states for this key, or initialize new ones if they don't exist
-        self.table_states.key_selector_state = self
+        (self.table_states.key_selector_state, self.scrollbar_state) = self
             .key_state_cache
             .get(&self.current_key.file_offset_absolute)
-            .unwrap_or(&TableState::default().with_selected(0))
+            .unwrap_or(&(
+                TableState::default().with_selected(0),
+                ScrollbarState::new(self.current_subkeys.len()),
+            ))
             .clone();
 
         // Select the current subkey + value
@@ -190,8 +219,7 @@ impl Navigation {
                 .len()
                 .saturating_sub(1),
         );
-
-        self.table_states.key_selector_state.select(Some(new_index));
+        self.change_subkey_scroll_position(n_keys);
 
         self.select_subkey(self.current_subkeys.get(new_index).cloned());
     }
