@@ -1,6 +1,7 @@
 use std::fmt::Display;
 
 use crate::app::state::{FocusedPane, State};
+use notatin::cell_key_value::CellKeyValue;
 use notatin::cell_value::CellValue;
 use ratatui::prelude::Alignment;
 use ratatui::style::Color;
@@ -40,6 +41,57 @@ impl Display for ValueCellPreview {
     }
 }
 
+fn make_table_block(focused: bool) -> Block<'static> {
+    let title = Title::from("values".to_string());
+    let instructions = Title::from(Line::from(vec![
+        " Next Value ".into(),
+        "<j>".blue().bold(),
+        " Previous Value ".into(),
+        "<k>".blue().bold(),
+    ]));
+    Block::default()
+        .title(title.alignment(Alignment::Center))
+        .title(
+            instructions
+                .alignment(Alignment::Center)
+                .position(Position::Bottom),
+        )
+        .borders(Borders::ALL)
+        .border_set(match focused {
+            true => border::THICK,
+            false => border::PLAIN,
+        })
+        .border_style(match focused {
+            true => Color::Green,
+            false => Color::default(),
+        })
+}
+
+struct UIValueSet<'a> {
+    values: &'a Vec<CellKeyValue>,
+    focused: bool,
+}
+
+impl From<UIValueSet<'_>> for Table<'_> {
+    fn from(value: UIValueSet) -> Self {
+        let rows: Vec<Row> = value
+            .values
+            .iter()
+            .map(|value| {
+                Row::new(vec![
+                    Cell::new(value.get_pretty_name()),
+                    Cell::new(ValueCellPreview(value.get_content().0).to_string()),
+                ])
+            })
+            .collect::<Vec<Row>>();
+
+        Table::new(rows, vec![80, 80])
+            .block(make_table_block(value.focused))
+            .highlight_style(Style::new().add_modifier(Modifier::BOLD))
+            .highlight_symbol(Text::from("|").blue())
+    }
+}
+
 pub struct ValueSelector {}
 
 impl StatefulWidget for &mut ValueSelector {
@@ -50,49 +102,12 @@ impl StatefulWidget for &mut ValueSelector {
         buf: &mut ratatui::prelude::Buffer,
         state: &mut Self::State,
     ) {
-        let title = Title::from("values".to_string());
-        let instructions = Title::from(Line::from(vec![
-            " Next Value ".into(),
-            "<j>".blue().bold(),
-            " Previous Value ".into(),
-            "<k>".blue().bold(),
-        ]));
-        let block = Block::default()
-            .title(title.alignment(Alignment::Center))
-            .title(
-                instructions
-                    .alignment(Alignment::Center)
-                    .position(Position::Bottom),
-            )
-            .borders(Borders::ALL)
-            .border_set(match state.focused_pane {
-                FocusedPane::ValueSelector => border::THICK,
-                _ => border::PLAIN,
-            })
-            .border_style(match state.focused_pane {
-                FocusedPane::ValueSelector => Color::Green,
-                _ => Color::default(),
-            });
-
-        let rows: Vec<Row> = state
-            .navigation
-            .current_values
-            .iter()
-            .map(|value| {
-                Row::new(vec![
-                    Cell::new(value.get_pretty_name()),
-                    Cell::new(ValueCellPreview(value.get_content().0).to_string()),
-                ])
-            })
-            .collect::<Vec<Row>>();
-
-        let table = Table::new(rows, vec![80, 80])
-            .block(block)
-            .highlight_style(Style::new().add_modifier(Modifier::BOLD))
-            .highlight_symbol(Text::from("|").blue());
-
         <Table as StatefulWidget>::render(
-            table,
+            UIValueSet {
+                values: &state.navigation.current_values,
+                focused: state.focused_pane == FocusedPane::ValueSelector,
+            }
+            .into(),
             area,
             buf,
             &mut state.navigation.table_states.value_selector_state,
